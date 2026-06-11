@@ -52,3 +52,21 @@ Describe 'Get-PptxFilesInFolder' {
         $result.Count | Should -Be 0
     }
 }
+
+Describe 'Test-DuplicatePath' {
+    It '既存リストに同じパスがあれば $true' {
+        $existing = @('C:\a\x.pptx', 'C:\a\y.pptx')
+        Test-DuplicatePath -ExistingPaths $existing -NewPath 'C:\a\x.pptx' | Should -Be $true
+    }
+    It '大文字小文字を区別せず一致とみなす' {
+        $existing = @('C:\a\X.pptx')
+        Test-DuplicatePath -ExistingPaths $existing -NewPath 'c:\a\x.pptx' | Should -Be $true
+    }
+    It '存在しなければ $false' {
+        $existing = @('C:\a\x.pptx')
+        Test-DuplicatePath -ExistingPaths $existing -NewPath 'C:\a\z.pptx' | Should -Be $false
+    }
+    It '空リストなら $false' {
+        Test-DuplicatePath -ExistingPaths @() -NewPath 'C:\a\z.pptx' | Should -Be $false
+    }
+}

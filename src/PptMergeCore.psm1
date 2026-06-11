@@ -27,4 +27,21 @@ function Get-PptxFilesInFolder {
         ForEach-Object { $_.FullName }
 }
 
-Export-ModuleMember -Function Test-OutputName, Get-PptxFilesInFolder
+function Test-DuplicatePath {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
+        [string[]]$ExistingPaths,
+        [Parameter(Mandatory)]
+        [string]$NewPath
+    )
+    foreach ($p in $ExistingPaths) {
+        if ([string]::Equals($p, $NewPath, [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+Export-ModuleMember -Function Test-OutputName, Get-PptxFilesInFolder, Test-DuplicatePath
