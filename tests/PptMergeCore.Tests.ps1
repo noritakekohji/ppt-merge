@@ -21,3 +21,34 @@ Describe 'Test-OutputName' {
         Test-OutputName -Name '資料まとめ' | Should -Be $true
     }
 }
+
+Describe 'Get-PptxFilesInFolder' {
+    BeforeAll {
+        $script:tmp = Join-Path $TestDrive 'pptxfolder'
+        New-Item -ItemType Directory -Path $script:tmp | Out-Null
+        New-Item -ItemType File -Path (Join-Path $script:tmp 'a.pptx') | Out-Null
+        New-Item -ItemType File -Path (Join-Path $script:tmp 'b.pptx') | Out-Null
+        New-Item -ItemType File -Path (Join-Path $script:tmp 'old.ppt') | Out-Null
+        New-Item -ItemType File -Path (Join-Path $script:tmp '~$lock.pptx') | Out-Null
+        New-Item -ItemType File -Path (Join-Path $script:tmp 'note.txt') | Out-Null
+    }
+    It 'pptx のみを返す（ppt/txt は除外）' {
+        $result = Get-PptxFilesInFolder -FolderPath $script:tmp
+        ($result | ForEach-Object { Split-Path $_ -Leaf }) | Should -Contain 'a.pptx'
+        ($result | ForEach-Object { Split-Path $_ -Leaf }) | Should -Contain 'b.pptx'
+        ($result | ForEach-Object { Split-Path $_ -Leaf }) | Should -Not -Contain 'old.ppt'
+        ($result | ForEach-Object { Split-Path $_ -Leaf }) | Should -Not -Contain 'note.txt'
+    }
+    It '一時ロックファイル(~$)を除外する' {
+        $result = Get-PptxFilesInFolder -FolderPath $script:tmp
+        ($result | ForEach-Object { Split-Path $_ -Leaf }) | Should -Not -Contain '~$lock.pptx'
+    }
+    It 'フルパスを返す' {
+        $result = Get-PptxFilesInFolder -FolderPath $script:tmp
+        $result[0] | Should -Match '^[A-Za-z]:\\'
+    }
+    It '存在しないフォルダは空配列を返す' {
+        $result = @(Get-PptxFilesInFolder -FolderPath (Join-Path $TestDrive 'nope'))
+        $result.Count | Should -Be 0
+    }
+}
