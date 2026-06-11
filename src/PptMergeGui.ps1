@@ -64,7 +64,7 @@ $form.Controls.Add($btnAddFiles)
 $listBox = New-Object System.Windows.Forms.CheckedListBox
 $listBox.Location = New-Object System.Drawing.Point(12, 52)
 $listBox.Size = New-Object System.Drawing.Size(500, 220)
-$listBox.CheckOnClick = $true
+$listBox.CheckOnClick = $false
 $listBox.AllowDrop = $true
 $form.Controls.Add($listBox)
 
@@ -175,6 +175,16 @@ function Add-FileToList {
 }
 $listBox.DisplayMember = 'Name'
 
+# ---- イベント: ダブルクリックでチェック切替 ----
+# CheckOnClick=$false のため、ファイル名クリックでは選択のみ。
+# チェックボックスのクリック、またはダブルクリックでオン/オフを切り替える。
+$listBox.Add_DoubleClick({
+    $i = $listBox.SelectedIndex
+    if ($i -ge 0) {
+        $listBox.SetItemChecked($i, -not $listBox.GetItemChecked($i))
+    }
+})
+
 # ---- イベント: フォルダ一括追加 ----
 $btnAddFolder.Add_Click({
     $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
@@ -278,9 +288,21 @@ $btnRun.Add_Click({
     }
 
     $outFolder = $txtFolder.Text.Trim()
-    if (-not (Test-Path -LiteralPath $outFolder -PathType Container)) {
-        [System.Windows.Forms.MessageBox]::Show('出力先フォルダが存在しません。', '入力エラー')
+    if ([string]::IsNullOrWhiteSpace($outFolder)) {
+        [System.Windows.Forms.MessageBox]::Show('出力先フォルダを入力してください。', '入力エラー')
         return
+    }
+    if (-not (Test-Path -LiteralPath $outFolder -PathType Container)) {
+        # 直接入力されたパスがまだ存在しない場合は作成を確認
+        $r = [System.Windows.Forms.MessageBox]::Show(
+            "出力先フォルダが存在しません。作成しますか?`r`n$outFolder", '確認', 'YesNo', 'Question')
+        if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+        try {
+            New-Item -ItemType Directory -Path $outFolder -Force | Out-Null
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show("フォルダを作成できませんでした:`r`n$($_.Exception.Message)", 'エラー', 'OK', 'Error')
+            return
+        }
     }
     if (-not (Test-OutputName -Name $txtName.Text.Trim())) {
         [System.Windows.Forms.MessageBox]::Show('出力ファイル名が不正です(禁止文字や空欄)。', '入力エラー')
@@ -315,10 +337,11 @@ $btnRun.Add_Click({
         for ($i = 0; $i -lt $n; $i++) {
             $file = $targets[$i]
             Write-Log ("{0}/{1}: {2} を追加中..." -f ($i + 1), $n, (Split-Path $file -Leaf))
-            $insertAt = $pres.Slides.Count + 1
-            # InsertFromFile(FileName, Index, SlideStart, SlideEnd)
-            # SlideStart/End を省略(0)すると全スライドを挿入。元デザインを保持。
-            [void]$pres.Slides.InsertFromFile($file, $pres.Slides.Count, 1, 0)
+            # InsertFromFile(FileName, Index, [SlideStart], [SlideEnd])
+            # Index は「この番号のスライドの後ろに挿入」。現在の枚数を渡すと末尾に追加。
+            # SlideStart/SlideEnd を省略すると全スライドを挿入(元デザインを保持)。
+            # ※ SlideEnd=0 は不正値となるため、引数自体を渡さないこと。
+            [void]$pres.Slides.InsertFromFile($file, $pres.Slides.Count)
             [System.Windows.Forms.Application]::DoEvents()
         }
 
@@ -367,6 +390,10 @@ if ($null -ne $saved) {
     if ($null -ne $saved.MakePdf) {
         $chkPdf.Checked = [bool]$saved.MakePdf
     }
+}
+# 出力先フォルダが未設定なら、デフォルトとしてデスクトップを入れておく(直接編集可)
+if ([string]::IsNullOrWhiteSpace($txtFolder.Text)) {
+    $txtFolder.Text = [System.Environment]::GetFolderPath('Desktop')
 }
 
 [void]$form.ShowDialog()
