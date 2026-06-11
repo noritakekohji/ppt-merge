@@ -3,6 +3,36 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 Import-Module "$PSScriptRoot/PptMergeCore.psm1" -Force
 
+# ---- 設定の保存先 ----
+$script:SettingsPath = Join-Path $env:APPDATA 'ppt-merge\settings.json'
+
+function Get-AppSettings {
+    if (Test-Path -LiteralPath $script:SettingsPath) {
+        try {
+            return Get-Content -LiteralPath $script:SettingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        } catch {
+            return $null
+        }
+    }
+    return $null
+}
+
+function Save-AppSettings {
+    param(
+        [string]$OutputFolder,
+        [bool]$MakePdf
+    )
+    $dir = Split-Path $script:SettingsPath -Parent
+    if (-not (Test-Path -LiteralPath $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    $obj = [PSCustomObject]@{
+        OutputFolder = $OutputFolder
+        MakePdf      = $MakePdf
+    }
+    $obj | ConvertTo-Json | Set-Content -LiteralPath $script:SettingsPath -Encoding UTF8
+}
+
 # ---- ログ用ヘルパ ----
 function Write-Log {
     param([string]$Message)
@@ -327,5 +357,16 @@ $btnRun.Add_Click({
         $btnRun.Enabled = $true
     }
 })
+
+# ---- 起動時: 設定復元 ----
+$saved = Get-AppSettings
+if ($null -ne $saved) {
+    if ($saved.OutputFolder -and (Test-Path -LiteralPath $saved.OutputFolder -PathType Container)) {
+        $txtFolder.Text = $saved.OutputFolder
+    }
+    if ($null -ne $saved.MakePdf) {
+        $chkPdf.Checked = [bool]$saved.MakePdf
+    }
+}
 
 [void]$form.ShowDialog()
