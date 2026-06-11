@@ -60,12 +60,17 @@ $btnAddFiles.Location = New-Object System.Drawing.Point(180, 12)
 $btnAddFiles.Size = New-Object System.Drawing.Size(160, 30)
 $form.Controls.Add($btnAddFiles)
 
-# ファイルリスト
-$listBox = New-Object System.Windows.Forms.CheckedListBox
+# ファイルリスト(ListView: チェックボックス + 複数選択対応)
+$listBox = New-Object System.Windows.Forms.ListView
 $listBox.Location = New-Object System.Drawing.Point(12, 52)
 $listBox.Size = New-Object System.Drawing.Size(500, 220)
-$listBox.CheckOnClick = $false
+$listBox.View = 'Details'
+$listBox.CheckBoxes = $true
+$listBox.MultiSelect = $true
+$listBox.FullRowSelect = $true
+$listBox.HeaderStyle = 'None'
 $listBox.AllowDrop = $true
+[void]$listBox.Columns.Add('ファイル名', 478)
 $form.Controls.Add($listBox)
 
 # 上下/削除/クリアボタン
@@ -92,6 +97,12 @@ $btnClear.Text = 'クリア'
 $btnClear.Location = New-Object System.Drawing.Point(522, 164)
 $btnClear.Size = New-Object System.Drawing.Size(90, 30)
 $form.Controls.Add($btnClear)
+
+$btnSort = New-Object System.Windows.Forms.Button
+$btnSort.Text = '名前順ソート'
+$btnSort.Location = New-Object System.Drawing.Point(522, 198)
+$btnSort.Size = New-Object System.Drawing.Size(90, 30)
+$form.Controls.Add($btnSort)
 
 # 出力先
 $lblFolder = New-Object System.Windows.Forms.Label
@@ -164,24 +175,22 @@ $script:logBox = $logBox
 # ---- リスト操作ヘルパ ----
 function Add-FileToList {
     param([string]$Path)
-    $existing = @($listBox.Items | ForEach-Object { $_.Path })
+    $existing = @($listBox.Items | ForEach-Object { $_.Tag })
     if (Test-DuplicatePath -ExistingPaths $existing -NewPath $Path) {
         Write-Log "既にリストにあります: $(Split-Path $Path -Leaf)"
         return
     }
-    $item = [PSCustomObject]@{ Path = $Path; Name = (Split-Path $Path -Leaf) }
-    $idx = $listBox.Items.Add($item)
-    $listBox.SetItemChecked($idx, $true)
+    $item = New-Object System.Windows.Forms.ListViewItem((Split-Path $Path -Leaf))
+    $item.Tag = $Path
+    $added = $listBox.Items.Add($item)
+    $added.Checked = $true
 }
-$listBox.DisplayMember = 'Name'
 
-# ---- イベント: ダブルクリックでチェック切替 ----
-# CheckOnClick=$false のため、ファイル名クリックでは選択のみ。
-# チェックボックスのクリック、またはダブルクリックでオン/オフを切り替える。
+# ---- イベント: ダブルクリックで選択行のチェック切替 ----
+# チェックボックスのクリックでも切替可能。ファイル名クリックは選択のみ(並べ替え用)。
 $listBox.Add_DoubleClick({
-    $i = $listBox.SelectedIndex
-    if ($i -ge 0) {
-        $listBox.SetItemChecked($i, -not $listBox.GetItemChecked($i))
+    foreach ($it in @($listBox.SelectedItems)) {
+        $it.Checked = -not $it.Checked
     }
 })
 
@@ -210,38 +219,59 @@ $btnAddFiles.Add_Click({
     }
 })
 
-# ---- イベント: 上移動 ----
+# ---- イベント: 上移動(複数選択対応) ----
 $btnUp.Add_Click({
-    $i = $listBox.SelectedIndex
-    if ($i -gt 0) {
+    $indices = @($listBox.SelectedIndices | Sort-Object)
+    if ($indices.Count -eq 0) { return }
+    if ($indices[0] -le 0) { return }  # 先頭が選択に含まれる場合は移動しない
+    foreach ($i in $indices) {
         $item = $listBox.Items[$i]
-        $checked = $listBox.GetItemChecked($i)
         $listBox.Items.RemoveAt($i)
-        $listBox.Items.Insert($i - 1, $item)
-        $listBox.SetItemChecked($i - 1, $checked)
-        $listBox.SelectedIndex = $i - 1
+        [void]$listBox.Items.Insert($i - 1, $item)
+        $item.Selected = $true
     }
+    $listBox.Focus()
 })
 
-# ---- イベント: 下移動 ----
+# ---- イベント: 下移動(複数選択対応) ----
 $btnDown.Add_Click({
-    $i = $listBox.SelectedIndex
-    if ($i -ge 0 -and $i -lt $listBox.Items.Count - 1) {
+    $indices = @($listBox.SelectedIndices | Sort-Object -Descending)
+    if ($indices.Count -eq 0) { return }
+    if ($indices[0] -ge $listBox.Items.Count - 1) { return }  # 末尾が選択に含まれる場合は移動しない
+    foreach ($i in $indices) {
         $item = $listBox.Items[$i]
-        $checked = $listBox.GetItemChecked($i)
         $listBox.Items.RemoveAt($i)
-        $listBox.Items.Insert($i + 1, $item)
-        $listBox.SetItemChecked($i + 1, $checked)
-        $listBox.SelectedIndex = $i + 1
+        [void]$listBox.Items.Insert($i + 1, $item)
+        $item.Selected = $true
     }
+    $listBox.Focus()
 })
 
-# ---- イベント: 削除 / クリア ----
+# ---- イベント: 削除(複数選択対応) / クリア ----
 $btnRemove.Add_Click({
-    $i = $listBox.SelectedIndex
-    if ($i -ge 0) { $listBox.Items.RemoveAt($i) }
+    $indices = @($listBox.SelectedIndices | Sort-Object -Descending)
+    foreach ($i in $indices) { $listBox.Items.RemoveAt($i) }
 })
 $btnClear.Add_Click({ $listBox.Items.Clear() })
+
+# ---- イベント: 名前順ソート(チェック状態を保持) ----
+$btnSort.Add_Click({
+    $snapshot = @()
+    foreach ($it in $listBox.Items) {
+        $snapshot += [PSCustomObject]@{ Name = $it.Text; Path = $it.Tag; Checked = $it.Checked }
+    }
+    if ($snapshot.Count -eq 0) { return }
+    $sorted = $snapshot | Sort-Object Name
+    $listBox.BeginUpdate()
+    $listBox.Items.Clear()
+    foreach ($s in $sorted) {
+        $item = New-Object System.Windows.Forms.ListViewItem($s.Name)
+        $item.Tag = $s.Path
+        $added = $listBox.Items.Add($item)
+        $added.Checked = $s.Checked
+    }
+    $listBox.EndUpdate()
+})
 
 # ---- イベント: 参照 ----
 $btnBrowse.Add_Click({
@@ -279,8 +309,8 @@ $form.Add_DragDrop($dragDrop)
 $btnRun.Add_Click({
     # 対象ファイル(チェック済み・表示順)を収集
     $targets = @()
-    for ($i = 0; $i -lt $listBox.Items.Count; $i++) {
-        if ($listBox.GetItemChecked($i)) { $targets += $listBox.Items[$i].Path }
+    foreach ($it in $listBox.Items) {
+        if ($it.Checked) { $targets += $it.Tag }
     }
     if ($targets.Count -eq 0) {
         [System.Windows.Forms.MessageBox]::Show('マージ対象が選択されていません。', '入力エラー')
@@ -331,10 +361,16 @@ $btnRun.Add_Click({
     try {
         Write-Log 'PowerPoint を起動しています...'
         $ppt = New-Object -ComObject PowerPoint.Application
-        $pres = $ppt.Presentations.Add($false)  # WithWindow = $false（非表示）
 
         $n = $targets.Count
-        for ($i = 0; $i -lt $n; $i++) {
+        # 1つ目のファイルをベースとして開く。空の新規プレゼン(既定サイズ・既定テーマ)へ
+        # 挿入するとスライドが再配置されてレイアウトが崩れるため、先頭ファイルを土台にして
+        # その元サイズ・マスター・デザインを基準にする。
+        # ReadOnly=$true, Untitled=$true で開くことで、元ファイルを変更しないコピーになる。
+        Write-Log ("1/{0}: {1} を追加中..." -f $n, (Split-Path $targets[0] -Leaf))
+        $pres = $ppt.Presentations.Open($targets[0], $true, $true, $false)
+
+        for ($i = 1; $i -lt $n; $i++) {
             $file = $targets[$i]
             Write-Log ("{0}/{1}: {2} を追加中..." -f ($i + 1), $n, (Split-Path $file -Leaf))
             # InsertFromFile(FileName, Index, [SlideStart], [SlideEnd])
