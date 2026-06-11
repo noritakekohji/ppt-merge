@@ -70,3 +70,20 @@ Describe 'Test-DuplicatePath' {
         Test-DuplicatePath -ExistingPaths @() -NewPath 'C:\a\z.pptx' | Should -Be $false
     }
 }
+
+Describe 'Resolve-OutputPaths' {
+    It 'pptx と pdf のフルパスを返す' {
+        $r = Resolve-OutputPaths -FolderPath 'C:\out' -Name 'merged'
+        $r.PptxPath | Should -Be 'C:\out\merged.pptx'
+        $r.PdfPath  | Should -Be 'C:\out\merged.pdf'
+    }
+    It '末尾区切りのフォルダでも二重区切りにならない' {
+        $r = Resolve-OutputPaths -FolderPath 'C:\out\' -Name 'merged'
+        $r.PptxPath | Should -Be 'C:\out\merged.pptx'
+    }
+    It '名前に拡張子が付いていても除去して付け直す' {
+        $r = Resolve-OutputPaths -FolderPath 'C:\out' -Name 'merged.pptx'
+        $r.PptxPath | Should -Be 'C:\out\merged.pptx'
+        $r.PdfPath  | Should -Be 'C:\out\merged.pdf'
+    }
+}

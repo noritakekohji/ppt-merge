@@ -44,4 +44,21 @@ function Test-DuplicatePath {
     return $false
 }
 
-Export-ModuleMember -Function Test-OutputName, Get-PptxFilesInFolder, Test-DuplicatePath
+function Resolve-OutputPaths {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [string]$FolderPath,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+    $base = [System.IO.Path]::GetFileNameWithoutExtension($Name)
+    $pptx = Join-Path $FolderPath ($base + '.pptx')
+    $pdf  = Join-Path $FolderPath ($base + '.pdf')
+    [PSCustomObject]@{
+        PptxPath = $pptx
+        PdfPath  = $pdf
+    }
+}
+
+Export-ModuleMember -Function Test-OutputName, Get-PptxFilesInFolder, Test-DuplicatePath, Resolve-OutputPaths
