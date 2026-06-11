@@ -1,0 +1,24 @@
+# 秘密情報
+.env
+*.key
+credentials.*
+secrets.*
+
+# ビルド成果物
+dist/
+build/
+__pycache__/
+*.pyc
+node_modules/
+
+# OS生成物
+Thumbs.db
+.DS_Store
+
+# PowerPoint 一時ファイル
+~$*.pptx
+~$*.ppt
+
+# ツール出力(動作確認時のサンプル出力)
+output/
+*.pdf
