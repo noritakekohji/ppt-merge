@@ -235,9 +235,97 @@ $form.AllowDrop = $true
 $form.Add_DragEnter($dragEnter)
 $form.Add_DragDrop($dragDrop)
 
-# ---- 実行ボタン(Task 7 で実装) ----
+# ---- 実行ボタン ----
 $btnRun.Add_Click({
-    Write-Log 'マージ実行は未実装です'
+    # 対象ファイル(チェック済み・表示順)を収集
+    $targets = @()
+    for ($i = 0; $i -lt $listBox.Items.Count; $i++) {
+        if ($listBox.GetItemChecked($i)) { $targets += $listBox.Items[$i].Path }
+    }
+    if ($targets.Count -eq 0) {
+        [System.Windows.Forms.MessageBox]::Show('マージ対象が選択されていません。', '入力エラー')
+        return
+    }
+
+    $outFolder = $txtFolder.Text.Trim()
+    if (-not (Test-Path -LiteralPath $outFolder -PathType Container)) {
+        [System.Windows.Forms.MessageBox]::Show('出力先フォルダが存在しません。', '入力エラー')
+        return
+    }
+    if (-not (Test-OutputName -Name $txtName.Text.Trim())) {
+        [System.Windows.Forms.MessageBox]::Show('出力ファイル名が不正です(禁止文字や空欄)。', '入力エラー')
+        return
+    }
+
+    $paths = Resolve-OutputPaths -FolderPath $outFolder -Name $txtName.Text.Trim()
+    $makePdf = $chkPdf.Checked
+
+    # 上書き確認
+    $existsTargets = @()
+    if (Test-Path -LiteralPath $paths.PptxPath) { $existsTargets += $paths.PptxPath }
+    if ($makePdf -and (Test-Path -LiteralPath $paths.PdfPath)) { $existsTargets += $paths.PdfPath }
+    if ($existsTargets.Count -gt 0) {
+        $msg = "次のファイルを上書きします:`r`n" + ($existsTargets -join "`r`n") + "`r`n続行しますか?"
+        $r = [System.Windows.Forms.MessageBox]::Show($msg, '上書き確認', 'YesNo', 'Warning')
+        if ($r -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+    }
+
+    # 設定保存(Task 8 で定義する Save-AppSettings を呼ぶ)
+    Save-AppSettings -OutputFolder $outFolder -MakePdf $makePdf
+
+    $btnRun.Enabled = $false
+    $ppt = $null
+    $pres = $null
+    try {
+        Write-Log 'PowerPoint を起動しています...'
+        $ppt = New-Object -ComObject PowerPoint.Application
+        $pres = $ppt.Presentations.Add($false)  # WithWindow = $false（非表示）
+
+        $n = $targets.Count
+        for ($i = 0; $i -lt $n; $i++) {
+            $file = $targets[$i]
+            Write-Log ("{0}/{1}: {2} を追加中..." -f ($i + 1), $n, (Split-Path $file -Leaf))
+            $insertAt = $pres.Slides.Count + 1
+            # InsertFromFile(FileName, Index, SlideStart, SlideEnd)
+            # SlideStart/End を省略(0)すると全スライドを挿入。元デザインを保持。
+            [void]$pres.Slides.InsertFromFile($file, $pres.Slides.Count, 1, 0)
+            [System.Windows.Forms.Application]::DoEvents()
+        }
+
+        Write-Log "保存しています: $($paths.PptxPath)"
+        # 24 = ppSaveAsOpenXMLPresentation (.pptx)
+        $pres.SaveAs($paths.PptxPath, 24)
+
+        if ($makePdf) {
+            Write-Log "PDF を作成しています: $($paths.PdfPath)"
+            # 32 = ppSaveAsPDF
+            $pres.SaveAs($paths.PdfPath, 32)
+        }
+
+        Write-Log '完了しました。'
+        $doneMsg = "マージ完了:`r`n$($paths.PptxPath)"
+        if ($makePdf) { $doneMsg += "`r`n$($paths.PdfPath)" }
+        [System.Windows.Forms.MessageBox]::Show($doneMsg, '完了')
+    }
+    catch {
+        Write-Log "エラー: $($_.Exception.Message)"
+        [System.Windows.Forms.MessageBox]::Show("処理を中断しました:`r`n$($_.Exception.Message)", 'エラー', 'OK', 'Error')
+    }
+    finally {
+        if ($pres -ne $null) {
+            try { $pres.Close() } catch {}
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($pres)
+        }
+        if ($ppt -ne $null) {
+            try { $ppt.Quit() } catch {}
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($ppt)
+        }
+        $pres = $null
+        $ppt = $null
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        $btnRun.Enabled = $true
+    }
 })
 
 [void]$form.ShowDialog()
