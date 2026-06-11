@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - 「名前順ソート」ボタンを追加(チェック状態を保持したままファイル名昇順に並べ替え)
 - ファイルリストで複数選択しての上下移動・削除に対応
+- 対象フォルダのパスを直接入力して一括追加できる入力欄と「パス追加」ボタンを追加(Enter キーでも追加可能)
 
 ### Fixed
 - マージ時の `Slides.InsertFromFile` で `SlideEnd=0` を渡していたため「範囲外の整数 0」エラーで失敗していた問題を修正(引数を省略し全スライドを挿入)

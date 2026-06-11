@@ -49,16 +49,34 @@ $form.StartPosition = 'CenterScreen'
 
 # 上部ボタン
 $btnAddFolder = New-Object System.Windows.Forms.Button
-$btnAddFolder.Text = 'フォルダから一括追加'
+$btnAddFolder.Text = 'フォルダ参照'
 $btnAddFolder.Location = New-Object System.Drawing.Point(12, 12)
-$btnAddFolder.Size = New-Object System.Drawing.Size(160, 30)
+$btnAddFolder.Size = New-Object System.Drawing.Size(96, 30)
 $form.Controls.Add($btnAddFolder)
 
 $btnAddFiles = New-Object System.Windows.Forms.Button
-$btnAddFiles.Text = 'ファイルを個別追加'
-$btnAddFiles.Location = New-Object System.Drawing.Point(180, 12)
-$btnAddFiles.Size = New-Object System.Drawing.Size(160, 30)
+$btnAddFiles.Text = '個別追加'
+$btnAddFiles.Location = New-Object System.Drawing.Point(112, 12)
+$btnAddFiles.Size = New-Object System.Drawing.Size(84, 30)
 $form.Controls.Add($btnAddFiles)
+
+# 対象フォルダのパスを直接入力して追加
+$lblSrc = New-Object System.Windows.Forms.Label
+$lblSrc.Text = '対象パス:'
+$lblSrc.Location = New-Object System.Drawing.Point(202, 18)
+$lblSrc.Size = New-Object System.Drawing.Size(56, 20)
+$form.Controls.Add($lblSrc)
+
+$txtSrcFolder = New-Object System.Windows.Forms.TextBox
+$txtSrcFolder.Location = New-Object System.Drawing.Point(260, 15)
+$txtSrcFolder.Size = New-Object System.Drawing.Size(270, 22)
+$form.Controls.Add($txtSrcFolder)
+
+$btnAddSrcPath = New-Object System.Windows.Forms.Button
+$btnAddSrcPath.Text = 'パス追加'
+$btnAddSrcPath.Location = New-Object System.Drawing.Point(534, 12)
+$btnAddSrcPath.Size = New-Object System.Drawing.Size(78, 30)
+$form.Controls.Add($btnAddSrcPath)
 
 # ファイルリスト(ListView: チェックボックス + 複数選択対応)
 $listBox = New-Object System.Windows.Forms.ListView
@@ -186,6 +204,26 @@ function Add-FileToList {
     $added.Checked = $true
 }
 
+# 指定フォルダ内の pptx をまとめてリストへ追加する
+function Add-FolderToList {
+    param([string]$FolderPath)
+    if ([string]::IsNullOrWhiteSpace($FolderPath)) {
+        Write-Log '対象パスを入力してください。'
+        return
+    }
+    if (-not (Test-Path -LiteralPath $FolderPath -PathType Container)) {
+        Write-Log "フォルダが見つかりません: $FolderPath"
+        return
+    }
+    $files = Get-PptxFilesInFolder -FolderPath $FolderPath
+    if (@($files).Count -eq 0) {
+        Write-Log "pptx が見つかりません: $FolderPath"
+    } else {
+        foreach ($f in $files) { Add-FileToList -Path $f }
+        Write-Log "$(@($files).Count) 件を読み込みました: $FolderPath"
+    }
+}
+
 # ---- イベント: ダブルクリックで選択行のチェック切替 ----
 # チェックボックスのクリックでも切替可能。ファイル名クリックは選択のみ(並べ替え用)。
 $listBox.Add_DoubleClick({
@@ -194,17 +232,25 @@ $listBox.Add_DoubleClick({
     }
 })
 
-# ---- イベント: フォルダ一括追加 ----
+# ---- イベント: フォルダ参照(ダイアログで選択して一括追加) ----
 $btnAddFolder.Add_Click({
     $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
     if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-        $files = Get-PptxFilesInFolder -FolderPath $dlg.SelectedPath
-        if (@($files).Count -eq 0) {
-            Write-Log "pptx が見つかりません: $($dlg.SelectedPath)"
-        } else {
-            foreach ($f in $files) { Add-FileToList -Path $f }
-            Write-Log "$(@($files).Count) 件を読み込みました: $($dlg.SelectedPath)"
-        }
+        $txtSrcFolder.Text = $dlg.SelectedPath
+        Add-FolderToList -FolderPath $dlg.SelectedPath
+    }
+})
+
+# ---- イベント: 対象パスを直接入力して一括追加 ----
+$btnAddSrcPath.Add_Click({
+    Add-FolderToList -FolderPath $txtSrcFolder.Text.Trim()
+})
+# 対象パス入力欄で Enter キーでも追加できるようにする
+$txtSrcFolder.Add_KeyDown({
+    param($s, $e)
+    if ($e.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+        $e.SuppressKeyPress = $true
+        Add-FolderToList -FolderPath $txtSrcFolder.Text.Trim()
     }
 })
 
